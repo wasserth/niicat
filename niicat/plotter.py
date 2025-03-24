@@ -1,9 +1,11 @@
 import io
+import sys
 import importlib
 import nibabel as nb
 import numpy as np
 import matplotlib.pyplot as plt
 
+from base64 import standard_b64encode
 
 def try_import(module):
     "Try to import `module`. Returns module's object on success, None on failure"
@@ -270,3 +272,47 @@ def plot(iFile, return_fig=False, dpi=150, slice_num=None):
         return _plot_nifti_preview(iFile, return_fig=return_fig, dpi=dpi, slice_num=slice_num)
     else:
         return _plot_img(iFile, return_fig=return_fig, dpi=dpi)
+
+def _serialize_gr_command_for_kitty(**cmd):
+    """Adapted from https://sw.kovidgoyal.net/kitty/graphics-protocol/#a-minimal-example"""
+    payload = cmd.pop('payload', None)
+    cmd = ','.join(f'{k}={v}' for k, v in cmd.items())
+    ans = []
+    w = ans.append
+    w(b'\033_G'), w(cmd.encode('ascii'))
+    if payload:
+        w(b';')
+        w(payload)
+    w(b'\033\\')
+    return b''.join(ans)
+
+def _write_chunked_for_kitty(**cmd):
+    """Adapted from https://sw.kovidgoyal.net/kitty/graphics-protocol/#a-minimal-example"""
+    data = standard_b64encode(cmd.pop('data'))
+    while data:
+        chunk, data = data[:4096], data[4096:]
+        m = 1 if data else 0
+        sys.stdout.buffer.write(_serialize_gr_command_for_kitty(payload=chunk, m=m, **cmd))
+        sys.stdout.flush()
+        cmd.clear()
+
+def plot_kt(iFile, return_fig=False, dpi=150, slice_num=None):
+    """Adapted from https://sw.kovidgoyal.net/kitty/graphics-protocol/#transferring-pixel-data"""
+    if _is_nifti_file(iFile):
+        fig = _plot_nifti_preview(iFile, return_fig=True, dpi=dpi, slice_num=slice_num)
+        if fig is None: fig = plt.gcf()
+        fig.canvas.draw()
+        fig = fig.canvas.buffer_rgba()
+        fig = np.asarray(fig)
+        fig_shape = fig.shape
+        fig = fig.tobytes()
+        _write_chunked_for_kitty(a='T', f=32, s=fig_shape[1], v=fig_shape[0], data=fig)
+    else:
+        fig = _plot_img(iFile, return_fig=True, dpi=dpi)
+        if fig is None: fig = plt.gcf()
+        fig.canvas.draw()
+        fig = fig.canvas.buffer_rgba()
+        fig = np.asarray(fig)
+        fig_shape = fig.shape
+        fig = fig.tobytes()
+        _write_chunked_for_kitty(a='T', f=32, s=fig_shape[1], v=fig_shape[0], data=fig)

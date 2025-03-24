@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 
 import os
+import sys
 import argparse
-from niicat.plotter import plot
+from niicat.plotter import plot, plot_kt
 from importlib.metadata import files, version
 from importlib.resources import files as resource_files
 
@@ -23,6 +24,9 @@ def main():
     parser.add_argument("-lb", action="store_true",
                         help="Use libsixel-bin instead of iTerm2's imgcat to plot the image.",
                         default=False)
+    parser.add_argument("-kt", action="store_true",
+                        help="Use kitty graphics protocol instead of sixel to plot the image.",
+                        default=False)
     parser.add_argument("-d", "--dpi", metavar="N", type=int,
                         help="resolution for plotting (default: 200).",
                         default=200)
@@ -33,13 +37,16 @@ def main():
     args = parser.parse_args()
 
     niicat_files = resource_files('niicat.resources')
+    python_path = sys.executable if sys.executable else "python"
     if args.ls:
         plot(args.nifti_file, dpi=args.dpi, slice_num=args.slice)
+    elif args.kt:
+        plot_kt(args.nifti_file, dpi=args.dpi, slice_num=args.slice)
     elif args.lb:
         niipre_path = str(niicat_files / 'niipre_to_buffer.py')
         imgcat_path = "img2sixel"
         if is_executable(imgcat_path):
-            os.system("python " + niipre_path + " " + args.nifti_file + " " + str(args.dpi) + 
+            os.system(python_path + " " + niipre_path + " " + args.nifti_file + " " + str(args.dpi) + 
                      " " + str(args.slice if args.slice is not None else "") + " | " + imgcat_path)
         else:
             print("ERROR: the command 'img2sixel' is not available in your PATH. " +
@@ -47,7 +54,7 @@ def main():
     else:
         niipre_path = str(niicat_files / 'niipre_to_buffer.py')
         imgcat_path = str(niicat_files / 'imgcat.sh')
-        os.system("python " + niipre_path + " " + args.nifti_file + " " + str(args.dpi) + 
+        os.system(python_path + " " + niipre_path + " " + args.nifti_file + " " + str(args.dpi) + 
                  " " + str(args.slice if args.slice is not None else "") + " | " + imgcat_path)
 
 
